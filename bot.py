@@ -31,7 +31,7 @@ def init_db():
 
 init_db()
 
-async def check_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.from_user:
         return
 
@@ -40,24 +40,20 @@ async def check_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = user.username or user.first_name
     chat = update.message.chat
     message = update.message
+    thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # Test edebilmek için admin kontrolünü geçici olarak kapattık:
-    # if chat.type in ["group", "supergroup"]:
-    #     try:
-    #         member = await chat.get_member(user_id)
-    #         if member.status in ["creator", "administrator"]:
-    #             return
-    #     except Exception:
-    #         pass
+    # Eğer mesaj Rapor kanalından (veya rapor ile ilgili bir yerden) atıldıysa ve /rapor komutu değilse direkt sil!
+    # Telegram'da topic adını doğrudan metin olarak alamadığımız için, metnin içinde komut yoksa ve burası rapor mantığındaysa siliyoruz.
+    # Veya daha net olması için: Rapor kanalında düz yazı yazılmasına izin vermiyoruz.
+    # (Not: Rapor kanalının thread_id'sini veya başlığını buraya özel filtreleyebiliriz, şimdilik genel metin kontrolü yapıyoruz)
 
+    # Önce beğeni kontrolü yapılacak yerler (Postlar / General vb.)
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
     cursor.execute("SELECT like_count, last_updated FROM likes WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
     now = datetime.now()
-
-    thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
     if row:
         like_count, last_updated_str = row
@@ -98,10 +94,16 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
     if not message or not message.reply_to_message:
-        await message.reply_text(
-            "⚠️ Lütfen rapor etmek istediğiniz kişinin **mesajına yanıt vererek** `/rapor` yazın.",
-            message_thread_id=thread_id
-        )
+        # Eğer rapora yanlışlıkla düz yazı yazıldıysa ve yanıt verilmediyse mesajı silip uyarı verelim
+        try:
+            await message.delete()
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                message_thread_id=thread_id,
+                text="⚠️ Bu kanala yalnızca bir mesaja yanıt vererek `/rapor` yazabilirsiniz. Düz metin yazılamaz!"
+            )
+        except Exception as e:
+            print(f"Rapor kanalını temizleme hatası: {e}")
         return
 
     reporter = message.from_user
@@ -165,8 +167,11 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # /rapor komutu için handler
     app.add_handler(CommandHandler("rapor", rapor_komutu))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), check_message))
+    
+    # Diğer tüm normal metin mesajları için beğeni kontrolü handler'ı
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     print("Bot çalışıyor...")
     app.run_polling()

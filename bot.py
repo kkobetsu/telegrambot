@@ -25,7 +25,6 @@ def init_db():
             timestamp TEXT
         )
     """)
-    # Botun rapor başlığını otomatik hatırlaması için ayarlar tablosu
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -70,22 +69,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.message.chat
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
+    message_text = message.text or ""
 
-    # Eğer mesaj, botun öğrendiği Rapor başlığından atıldıysa:
     report_thread_id = get_report_thread_id()
-    if report_thread_id and thread_id == report_thread_id:
+
+    # Kesin Kural: Eğer mesaj Rapor topic'inden atıldıysa ve /rapor ile başlamıyorsa
+    if report_thread_id and thread_id == report_thread_id and not message_text.startswith('/'):
         try:
             await message.delete()
             await context.bot.send_message(
                 chat_id=chat.id,
                 message_thread_id=thread_id,
-                text=f"@{username}, bu kanalda yalnızca şikayet etmek istediğiniz mesaja yanıt vererek `/rapor` yazabilirsiniz."
+                text=f"@{username}, Bu kanal rapor kanalıdır, buraya sadece /rapor yazabilirsiniz."
             )
         except Exception as e:
             print(f"Rapor kanalı uyarı hatası: {e}")
         return
 
-    # Normal kanallar/başlıklar için 3 Beğeni Kuralı Kontrolü
+    # Normal kanallar/diğer başlıklar için 3 Beğeni Kuralı Kontrolü
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
@@ -131,7 +132,7 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # /rapor komutunun atıldığı başlığı otomatik olarak "Rapor Başlığı" olarak kaydediyoruz!
+    # Komut ilk kez kullanıldığında bu başlığı otomatik olarak "Rapor Topic'i" olarak hafızaya alıyoruz
     if thread_id:
         set_report_thread_id(thread_id)
 
@@ -216,4 +217,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

@@ -6,9 +6,11 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, Comma
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# POSTLAR başlığının thread_id'sini buraya yazabilirsin (örn: 2). 
-# Eğer bilmiyorsan boş bırakabilirsin, ilk mesajda loglarda görünecektir.
-POSTLAR_THREAD_ID = None 
+# Rapor başlığının ID'si
+REPORT_THREAD_ID = 93 
+
+# Postlar başlığının ID'si
+POSTLAR_THREAD_ID = 122 
 
 def init_db():
     conn = sqlite3.connect("bot_database.db")
@@ -29,12 +31,6 @@ def init_db():
             timestamp TEXT
         )
     """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
     conn.commit()
     conn.close()
 
@@ -44,21 +40,6 @@ async def post_init(application):
     await application.bot.set_my_commands([
         BotCommand("rapor", "Bir mesaja yanıt vererek kullanıcıyı rapor et")
     ])
-
-def get_report_thread_id():
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT value FROM settings WHERE key = 'report_thread_id'")
-    row = cursor.fetchone()
-    conn.close()
-    return int(row[0]) if row else None
-
-def set_report_thread_id(thread_id):
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('report_thread_id', ?)", (str(thread_id),))
-    conn.commit()
-    conn.close()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.from_user:
@@ -75,13 +56,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
     message_text = message.text or ""
 
-    report_thread_id = get_report_thread_id()
-
-    # Log yazdıralım ki Postlar veya diğer başlıkların ID'lerini rahatça görebilesin
-    print(f"Gelen Mesaj -> Thread ID: {thread_id}, Kullanıcı: {username}, Metin: {message_text}")
-
-    # 1. KONTROL: Rapor başlığından atıldıysa ve /rapor ile başlamıyorsa uyar ver ve çık
-    if report_thread_id and thread_id == report_thread_id and not message_text.startswith('/'):
+    # 1. KONTROL: Rapor başlığından (93) atıldıysa ve /rapor ile başlamıyorsa uyar ver ve çık
+    if thread_id == REPORT_THREAD_ID and not message_text.startswith('/'):
         try:
             await message.delete()
             await context.bot.send_message(
@@ -93,10 +69,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"Rapor kanalı uyarı hatası: {e}")
         return
 
-    # 2. KONTROL: 3 Beğeni Kuralı YALNIZCA "Postlar" başlığında (veya POSTLAR_THREAD_ID eşleşiyorsa) geçerli olsun!
-    # Eğer POSTLAR_THREAD_ID tanımlandıysa ve gelen mesaj o başlıktaysa beğeni kontrolüne sok.
-    # Tanımlı değilse, şimdilik test edebilmen için logdaki thread_id'yi yukarıya yazman yeterlidir.
-    if POSTLAR_THREAD_ID and thread_id == POSTLAR_THREAD_ID:
+    # 2. KONTROL: 3 Beğeni Kuralı YALNIZCA Postlar başlığında (122) geçerli olsun
+    if thread_id == POSTLAR_THREAD_ID:
         conn = sqlite3.connect("bot_database.db")
         cursor = conn.cursor()
 
@@ -141,9 +115,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
-
-    if thread_id:
-        set_report_thread_id(thread_id)
 
     if not message or not message.reply_to_message:
         try:

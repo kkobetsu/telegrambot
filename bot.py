@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from telegram import Update, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
-# Railway ortam değişkeninden token'ı alıyoruz
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 def init_db():
@@ -40,7 +39,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.from_user:
         return
 
-    # Kritik Düzeltme: Botun kendi kendine mesaj atıp döngüye girmesini engelliyoruz
     if update.message.from_user.is_bot:
         return
 
@@ -50,6 +48,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.message.chat
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
+    message_text = message.text or ""
+
+    # Burası kritik: Eğer Rapor başlığındaysan (veya genel olarak komut dışı düz yazı yazıldıysa) 
+    # bunu beğeni sistemine sokmak yerine doğrudan Rapor kanalı kuralına göre ele alalım.
+    # Telegram forumlarında Rapor başlığının ID'sini tam bilmediğimiz için, 
+    # kullanıcının Rapor başlığına düz metin yazdığını varsayarak özel uyarı verelim:
+    
+    # Geçici test aşamasında olduğun için kendi üzerindeki kısıtlamaları net görebilmen adına 
+    # Rapor kanalında düz yazı yazıldığında çıkacak uyarıyı özelleştiriyoruz:
+    
+    # Eğer bu mesaj bir komut değilse ve Rapor başlığındaysa (veya genel metinse):
+    # Doğrudan beğeni kontrolüne geçmeden önce buranın Rapor başlığı olup olmadığını 
+    # thread_id üzerinden ayırt edebiliriz. Hangi thread_id olduğunu görmek için log yazdıralım:
+    print(f"Gelen mesaj thread_id: {thread_id}, Metin: {message_text}")
 
     # Normal kanallar için beğeni kontrolü
     conn = sqlite3.connect("bot_database.db")
@@ -73,7 +85,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=chat.id,
                     message_thread_id=thread_id,
-                    text=f"@{username}, mesaj gönderebilmek için son 24 saat içinde en az 3 içerik beğenmelisin! (Mevcut beğeni: {like_count}/3)"
+                    text=f"@{username}, bu kanalda mesaj gönderebilmek için son 24 saat içinde en az 3 içerik beğenmelisin! (Mevcut beğeni: {like_count}/3)"
                 )
             except Exception as e:
                 print(f"Mesaj silme hatası: {e}")
@@ -86,7 +98,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=chat.id,
                 message_thread_id=thread_id,
-                text=f"@{username}, sistemde kaydın yok veya son 24 saatte beğeni yapmadın. Mesaj atmak için en az 3 içerik beğenmelisin!"
+                text=f"@{username}, sistemde kaydın yok. Mesaj atmak için en az 3 içerik beğenmelisin!"
             )
         except Exception as e:
             print(f"Yeni kullanıcı mesaj silme hatası: {e}")
@@ -97,14 +109,13 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # Rapor kanalına komut yazıldı ancak bir mesaja yanıt verilmediyse:
     if not message or not message.reply_to_message:
         try:
             await message.delete()
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 message_thread_id=thread_id,
-                text="⚠️ Bu kanalda yalnızca şikayet etmek istediğiniz mesaja yanıt vererek `/rapor` yazabilirsiniz."
+                text="⚠️ Bu kanala yalnızca şikayet etmek istediğiniz mesaja yanıt vererek `/rapor` yazabilirsiniz. Düz metin yazılamaz."
             )
         except Exception as e:
             print(f"Rapor uyarı hatası: {e}")

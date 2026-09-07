@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from datetime import datetime, timedelta
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
 # Railway ortam değişkeninden token'ı alıyoruz
@@ -31,6 +31,12 @@ def init_db():
 
 init_db()
 
+async def post_init(application):
+    # Bot çalıştırıldığında Telegram'a komut listesini otomatik tanıtıyoruz (Böylece '/' basınca liste çıkar)
+    await application.bot.set_my_commands([
+        BotCommand("rapor", "Bir mesaja yanıt vererek kullanıcıyı rapor et")
+    ])
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.from_user:
         return
@@ -42,12 +48,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # Eğer mesaj Rapor kanalından (veya rapor ile ilgili bir yerden) atıldıysa ve /rapor komutu değilse direkt sil!
-    # Telegram'da topic adını doğrudan metin olarak alamadığımız için, metnin içinde komut yoksa ve burası rapor mantığındaysa siliyoruz.
-    # Veya daha net olması için: Rapor kanalında düz yazı yazılmasına izin vermiyoruz.
-    # (Not: Rapor kanalının thread_id'sini veya başlığını buraya özel filtreleyebiliriz, şimdilik genel metin kontrolü yapıyoruz)
-
-    # Önce beğeni kontrolü yapılacak yerler (Postlar / General vb.)
+    # Normal kanallar için beğeni kontrolü
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
@@ -93,17 +94,17 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
+    # Eğer /rapor komutu bir mesaja yanıt verilmeden kullanıldıysa
     if not message or not message.reply_to_message:
-        # Eğer rapora yanlışlıkla düz yazı yazıldıysa ve yanıt verilmediyse mesajı silip uyarı verelim
         try:
             await message.delete()
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 message_thread_id=thread_id,
-                text="⚠️ Bu kanala yalnızca bir mesaja yanıt vererek `/rapor` yazabilirsiniz. Düz metin yazılamaz!"
+                text="⚠️ Rapor kanalına yalnızca bir mesaja yanıt vererek `/rapor` yazabilirsiniz! Düz metin yazılamaz."
             )
         except Exception as e:
-            print(f"Rapor kanalını temizleme hatası: {e}")
+            print(f"Rapor uyarı hatası: {e}")
         return
 
     reporter = message.from_user
@@ -165,12 +166,9 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
-    # /rapor komutu için handler
     app.add_handler(CommandHandler("rapor", rapor_komutu))
-    
-    # Diğer tüm normal metin mesajları için beğeni kontrolü handler'ı
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     print("Bot çalışıyor...")

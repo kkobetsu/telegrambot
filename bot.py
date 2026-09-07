@@ -48,18 +48,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.message.chat
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
+    message_text = message.text or ""
 
-    # Eğer bu mesaj Rapor kanalından / başlığından atıldıysa (yani thread_id varsa ve rapor başlığına denk geliyorsa)
-    # veya geçici olarak tüm başlıklarda test ediyorsak: Rapor kanalında düz yazı yazıldığında 
-    # beğeni sistemine GİRMESİN, doğrudan uyarı versin. 
-    # Telegram'da forum başlık ID'leri integer'dır. Rapor başlığının ID'sini loglardan görebiliriz.
-    # Şimdilik eğer kullanıcı Rapor başlığındaysa bunu yakalamak için; Rapor kanalına yazılan her düz metne 
-    # "Bu kanalda sadece /rapor kullanılabilir" diyerek beğeni kontrolünü bypass edelim:
+    # EĞER MESAJ BİR MESAJA YANIT OLARAK ATILDIYSA VEYA İÇİNDE RAPOR GEÇİYORSA (Rapor kanalı mantığı):
+    # Rapor kanalında kullanıcılar genelde bir mesaja yanıt verip komut yazarlar veya yanlışlıkla düz yazı yazarlar.
+    # Eğer mesaj bir mesaja yanıt (reply) ise ve komut değilse, bunu Rapor kanalına yazılmış hatalı bir metin olarak ele alalım:
+    if message.reply_to_message and not message_text.startswith('/'):
+        try:
+            await message.delete()
+            await context.bot.send_message(
+                chat_id=chat.id,
+                message_thread_id=thread_id,
+                text=f"@{username}, bu kanalda yalnızca şikayet etmek istediğiniz mesaja yanıt vererek `/rapor` yazabilirsiniz."
+            )
+        except Exception as e:
+            print(f"Rapor kanalı uyarı hatası: {e}")
+        return
 
-    # (Geçici Çözüm: Eğer Rapor başlığında olduğumuzu anlamak istiyorsan, ilk mesajda loglara düşen thread_id'yi buraya ekleyebiliriz.
-    # Veya test ettiğin başlık özelinde doğrudan silebiliriz.)
-    
-    # Şimdilik standart beğeni kuralı:
+    # Normal kanallar/başlıklar için 3 Beğeni Kuralı Kontrolü
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
@@ -111,7 +117,7 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 message_thread_id=thread_id,
-                text="⚠️ Bu kanalda yalnızca şikayet etmek istediğiniz mesaja yanıt vererek `/rapor` yazabilirsiniz. Düz metin yazılamaz."
+                text="⚠️ Bu kanalda yalnızca şikayet etmek istediğiniz mesaja yanıt vererek `/rapor` yazabilirsiniz."
             )
         except Exception as e:
             print(f"Rapor uyarı hatası: {e}")

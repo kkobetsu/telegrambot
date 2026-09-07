@@ -6,6 +6,10 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, Comma
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
+# POSTLAR başlığının thread_id'sini buraya yazabilirsin (örn: 2). 
+# Eğer bilmiyorsan boş bırakabilirsin, ilk mesajda loglarda görünecektir.
+POSTLAR_THREAD_ID = None 
+
 def init_db():
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
@@ -73,7 +77,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     report_thread_id = get_report_thread_id()
 
-    # Kesin Kural: Eğer mesaj Rapor topic'inden atıldıysa ve /rapor ile başlamıyorsa
+    # Log yazdıralım ki Postlar veya diğer başlıkların ID'lerini rahatça görebilesin
+    print(f"Gelen Mesaj -> Thread ID: {thread_id}, Kullanıcı: {username}, Metin: {message_text}")
+
+    # 1. KONTROL: Rapor başlığından atıldıysa ve /rapor ile başlamıyorsa uyar ver ve çık
     if report_thread_id and thread_id == report_thread_id and not message_text.startswith('/'):
         try:
             await message.delete()
@@ -86,53 +93,55 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"Rapor kanalı uyarı hatası: {e}")
         return
 
-    # Normal kanallar/diğer başlıklar için 3 Beğeni Kuralı Kontrolü
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
+    # 2. KONTROL: 3 Beğeni Kuralı YALNIZCA "Postlar" başlığında (veya POSTLAR_THREAD_ID eşleşiyorsa) geçerli olsun!
+    # Eğer POSTLAR_THREAD_ID tanımlandıysa ve gelen mesaj o başlıktaysa beğeni kontrolüne sok.
+    # Tanımlı değilse, şimdilik test edebilmen için logdaki thread_id'yi yukarıya yazman yeterlidir.
+    if POSTLAR_THREAD_ID and thread_id == POSTLAR_THREAD_ID:
+        conn = sqlite3.connect("bot_database.db")
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT like_count, last_updated FROM likes WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    now = datetime.now()
+        cursor.execute("SELECT like_count, last_updated FROM likes WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        now = datetime.now()
 
-    if row:
-        like_count, last_updated_str = row
-        last_updated = datetime.fromisoformat(last_updated_str)
+        if row:
+            like_count, last_updated_str = row
+            last_updated = datetime.fromisoformat(last_updated_str)
 
-        if now - last_updated > timedelta(hours=24):
-            like_count = 0
-            last_updated = now
+            if now - last_updated > timedelta(hours=24):
+                like_count = 0
+                last_updated = now
 
-        if like_count < 3:
+            if like_count < 3:
+                try:
+                    await message.delete()
+                    await context.bot.send_message(
+                        chat_id=chat.id,
+                        message_thread_id=thread_id,
+                        text=f"@{username}, mesaj gönderebilmek için son 24 saat içinde en az 3 içerik beğenmelisin! (Mevcut beğeni: {like_count}/3)"
+                    )
+                except Exception as e:
+                    print(f"Mesaj silme hatası: {e}")
+        else:
+            cursor.execute("INSERT INTO likes (user_id, username, like_count, last_updated) VALUES (?, ?, 0, ?)", 
+                           (user_id, username, now.isoformat()))
+            conn.commit()
             try:
                 await message.delete()
                 await context.bot.send_message(
                     chat_id=chat.id,
                     message_thread_id=thread_id,
-                    text=f"@{username}, mesaj gönderebilmek için son 24 saat içinde en az 3 içerik beğenmelisin! (Mevcut beğeni: {like_count}/3)"
+                    text=f"@{username}, sistemde kaydın yok. Mesaj atmak için en az 3 içerik beğenmelisin!"
                 )
             except Exception as e:
-                print(f"Mesaj silme hatası: {e}")
-    else:
-        cursor.execute("INSERT INTO likes (user_id, username, like_count, last_updated) VALUES (?, ?, 0, ?)", 
-                       (user_id, username, now.isoformat()))
-        conn.commit()
-        try:
-            await message.delete()
-            await context.bot.send_message(
-                chat_id=chat.id,
-                message_thread_id=thread_id,
-                text=f"@{username}, sistemde kaydın yok. Mesaj atmak için en az 3 içerik beğenmelisin!"
-            )
-        except Exception as e:
-            print(f"Yeni kullanıcı mesaj silme hatası: {e}")
+                print(f"Yeni kullanıcı mesaj silme hatası: {e}")
 
-    conn.close()
+        conn.close()
 
 async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # Komut ilk kez kullanıldığında bu başlığı otomatik olarak "Rapor Topic'i" olarak hafızaya alıyoruz
     if thread_id:
         set_report_thread_id(thread_id)
 

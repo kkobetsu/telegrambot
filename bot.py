@@ -41,28 +41,23 @@ async def check_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.message.chat
     message = update.message
 
-    # Adminler takılmasın
-    if chat.type in ["group", "supergroup"]:
-        try:
-            member = await chat.get_member(user_id)
-            if member.status in ["creator", "administrator"]:
-                return
-        except Exception:
-            pass
+    # Test edebilmek için admin kontrolünü geçici olarak kapattık:
+    # if chat.type in ["group", "supergroup"]:
+    #     try:
+    #         member = await chat.get_member(user_id)
+    #         if member.status in ["creator", "administrator"]:
+    #             return
+    #     except Exception:
+    #         pass
 
-    thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
-
-    # Eğer mesaj "!! Rapor" veya adına benzer bir rapor başlığından atıldıysa ve /rapor komutu değilse direkt sil!
-    # Telegram'da başlık adını doğrudan yakalayamasak da topic adını message_thread_id üzerinden ya da metin kontrolüyle ele alabiliriz.
-    # Şurada rapor kanalına atılan düz yazıları engellemek için: Eğer mesaj bir komut değilse ve rapor kanalındaysa silebiliriz.
-    # Alternatif olarak genel beğeni sistemimiz zaten çalışıyor:
-    
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
     cursor.execute("SELECT like_count, last_updated FROM likes WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
     now = datetime.now()
+
+    thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
     if row:
         like_count, last_updated_str = row

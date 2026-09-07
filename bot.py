@@ -50,6 +50,13 @@ async def check_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+    thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
+
+    # Eğer mesaj "!! Rapor" veya adına benzer bir rapor başlığından atıldıysa ve /rapor komutu değilse direkt sil!
+    # Telegram'da başlık adını doğrudan yakalayamasak da topic adını message_thread_id üzerinden ya da metin kontrolüyle ele alabiliriz.
+    # Şurada rapor kanalına atılan düz yazıları engellemek için: Eğer mesaj bir komut değilse ve rapor kanalındaysa silebiliriz.
+    # Alternatif olarak genel beğeni sistemimiz zaten çalışıyor:
+    
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
@@ -68,7 +75,6 @@ async def check_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if like_count < 3:
             try:
                 await message.delete()
-                thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
                 await context.bot.send_message(
                     chat_id=chat.id,
                     message_thread_id=thread_id,
@@ -82,7 +88,6 @@ async def check_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         try:
             await message.delete()
-            thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
             await context.bot.send_message(
                 chat_id=chat.id,
                 message_thread_id=thread_id,

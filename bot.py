@@ -25,6 +25,13 @@ def init_db():
             timestamp TEXT
         )
     """)
+    # Botun rapor başlığını otomatik hatırlaması için ayarlar tablosu
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -34,6 +41,21 @@ async def post_init(application):
     await application.bot.set_my_commands([
         BotCommand("rapor", "Bir mesaja yanıt vererek kullanıcıyı rapor et")
     ])
+
+def get_report_thread_id():
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM settings WHERE key = 'report_thread_id'")
+    row = cursor.fetchone()
+    conn.close()
+    return int(row[0]) if row else None
+
+def set_report_thread_id(thread_id):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('report_thread_id', ?)", (str(thread_id),))
+    conn.commit()
+    conn.close()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.from_user:
@@ -48,12 +70,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.message.chat
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
-    message_text = message.text or ""
 
-    # EĞER MESAJ BİR MESAJA YANIT OLARAK ATILDIYSA VEYA İÇİNDE RAPOR GEÇİYORSA (Rapor kanalı mantığı):
-    # Rapor kanalında kullanıcılar genelde bir mesaja yanıt verip komut yazarlar veya yanlışlıkla düz yazı yazarlar.
-    # Eğer mesaj bir mesaja yanıt (reply) ise ve komut değilse, bunu Rapor kanalına yazılmış hatalı bir metin olarak ele alalım:
-    if message.reply_to_message and not message_text.startswith('/'):
+    # Eğer mesaj, botun öğrendiği Rapor başlığından atıldıysa:
+    report_thread_id = get_report_thread_id()
+    if report_thread_id and thread_id == report_thread_id:
         try:
             await message.delete()
             await context.bot.send_message(
@@ -110,6 +130,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
+
+    # /rapor komutunun atıldığı başlığı otomatik olarak "Rapor Başlığı" olarak kaydediyoruz!
+    if thread_id:
+        set_report_thread_id(thread_id)
 
     if not message or not message.reply_to_message:
         try:
@@ -192,3 +216,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

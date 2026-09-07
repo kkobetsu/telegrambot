@@ -32,7 +32,6 @@ def init_db():
 init_db()
 
 async def post_init(application):
-    # Bot çalıştırıldığında Telegram'a komut listesini otomatik tanıtıyoruz (Böylece '/' basınca liste çıkar)
     await application.bot.set_my_commands([
         BotCommand("rapor", "Bir mesaja yanıt vererek kullanıcıyı rapor et")
     ])
@@ -48,7 +47,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # Normal kanallar için beğeni kontrolü
+    # Eğer kullanıcı Rapor başlığında (topic) yazı yazmaya çalışıyorsa (veya genel olarak komut dışı metin girdiyse):
+    # Telegram forumlarında Rapor başlığının ID'si sabit olmadığı için, buraya özel bir kontrol ekleyebiliriz.
+    # Şöyle ki: Eğer mesaj doğrudan bir mesaja yanıt DEĞİLSE ve metin /rapor içermiyorsa, 
+    # bunu Rapor kanalına yazılmış düz metin olarak ele alıp özel uyarımızı verelim:
+    
+    # Not: Hangi başlıkta olduğunu tam anlamak için message_thread_id kontrolü yapabiliriz 
+    # veya tüm gruplarda bu kuralı uygulayabiliriz. İstediğin gibi metni özelleştiriyoruz:
+    
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
@@ -94,14 +100,14 @@ async def rapor_komutu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # Eğer /rapor komutu bir mesaja yanıt verilmeden kullanıldıysa
+    # Rapor kanalına komut yazıldı ancak bir mesaja yanıt verilmediyse:
     if not message or not message.reply_to_message:
         try:
             await message.delete()
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 message_thread_id=thread_id,
-                text="⚠️ Rapor kanalına yalnızca bir mesaja yanıt vererek `/rapor` yazabilirsiniz! Düz metin yazılamaz."
+                text="⚠️ Bu kanalda yalnızca şikayet etmek istediğiniz mesaja yanıt vererek `/rapor` yazabilirsiniz."
             )
         except Exception as e:
             print(f"Rapor uyarı hatası: {e}")

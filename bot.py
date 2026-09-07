@@ -40,6 +40,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.from_user:
         return
 
+    # Kritik Düzeltme: Botun kendi kendine mesaj atıp döngüye girmesini engelliyoruz
+    if update.message.from_user.is_bot:
+        return
+
     user = update.message.from_user
     user_id = user.id
     username = user.username or user.first_name
@@ -47,14 +51,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     thread_id = message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
-    # Eğer kullanıcı Rapor başlığında (topic) yazı yazmaya çalışıyorsa (veya genel olarak komut dışı metin girdiyse):
-    # Telegram forumlarında Rapor başlığının ID'si sabit olmadığı için, buraya özel bir kontrol ekleyebiliriz.
-    # Şöyle ki: Eğer mesaj doğrudan bir mesaja yanıt DEĞİLSE ve metin /rapor içermiyorsa, 
-    # bunu Rapor kanalına yazılmış düz metin olarak ele alıp özel uyarımızı verelim:
-    
-    # Not: Hangi başlıkta olduğunu tam anlamak için message_thread_id kontrolü yapabiliriz 
-    # veya tüm gruplarda bu kuralı uygulayabiliriz. İstediğin gibi metni özelleştiriyoruz:
-    
+    # Normal kanallar için beğeni kontrolü
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
 
